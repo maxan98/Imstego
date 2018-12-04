@@ -3,9 +3,11 @@ from PIL import Image, ImageDraw
 import math
 import numpy as np
 import time
+from pprint import pprint
 from scipy.fftpack import dct, idct
 from skimage.util.shape import view_as_blocks
 from skimage.util.shape import view_as_windows
+import matplotlib.pyplot as plt
 global header
 mquant = np.array([[3,5,7,9,11,13,15,17],
 [5,7,11,13,15,17,19,21],
@@ -18,6 +20,13 @@ mquant = np.array([[3,5,7,9,11,13,15,17],
 M = 8
 N = 8
 #np.hsplit(a, 3) 
+
+def split_2d(array, splits):
+    x, y = splits
+    return np.split(np.concatenate(np.split(array, y, axis=1)), x*y)
+
+
+
 def Cu(idx):
     '''
     coeficiente U
@@ -89,13 +98,38 @@ def blockshaped(arr, nrows, ncols):
     Return an array of shape (n, nrows, ncols) where
     n * nrows * ncols = arr.size
 
-    If arr is a 2D array, the returned array should look like n subblocks with
+    If arr is a 2D array, the returned array looks like n subblocks with
     each subblock preserving the "physical" layout of arr.
     """
     h, w = arr.shape
     return (arr.reshape(h//nrows, nrows, -1, ncols)
                .swapaxes(1,2)
                .reshape(-1, nrows, ncols))
+
+
+def unblockshaped(arr, h, w):
+    """
+    Return an array of shape (h, w) where
+    h * w = arr.size
+
+    If arr is of shape (n, nrows, ncols), n sublocks of shape (nrows, ncols),
+    then the returned array preserves the "physical" layout of the sublocks.
+    """
+    n, nrows, ncols = arr.shape
+    return (arr.reshape(h//nrows, -1, nrows, ncols)
+               .swapaxes(1,2)
+               .reshape(h, w))
+def get_chunks(M, n, p):
+    n = len(M)//n
+    p = len(M[0])//p
+    for i in range(0, len(M), n):
+        for j in range(0, len(M[0]), p):
+            yield M[i:i+n,j:j+p]
+
+def get_chunks2(M, n, p):
+        for i in range(0, len(M), n):
+            for j in range(0, len(M[0]), p):
+                yield M[i:i+n,j:j+p]
 
 def read_rows(path):
     image_file = open(path, "rb")
@@ -114,10 +148,10 @@ def writeycbcr(comp, name):
     image_file.write(bytearray(res))
     image_file.close()
 def main():
-    read_rows('RAY.bmp')
-    image = Image.open("RAY.bmp")
+    read_rows('lenna.png')
+    image = Image.open("lenna.png")
     w,h = image.size
-    image = image.rotate(-90)
+    image = image.rotate(90)
     imagered = image.copy()
     imagegreen = image.copy()
     imageblue = image.copy()
@@ -143,20 +177,30 @@ def main():
                      green.append(b)
       
     ycomp = [int(0.299*red[i]+0.587*green[i]+0.114*blue[i]) for i in range(len(green))]
+    nnn = 7
+    # for i in range(60):
+    #     nnn+=8
+    #     print(nnn,end=', ')
     #writeycbcr(ycomp,'dfs')
     y = np.array(ycomp)
-    y = y.reshape(w,h)
-   
-    
+    y = y.reshape(h,w)
+    y = np.fliplr(y)
+    #plt.gray()
+    #plt.imshow(y)
     writeycbcr(y,'last')
-    allmx = np.array([])
-    allmx = view_as_blocks(y, (8, 8))
-    rd = np.dstack(allmx)
-    flatten_view = allmx.reshape(allmx.shape[0], allmx.shape[1], -1)
-
-    imm = Image.fromarray(y.astype('uint8'))
-    imm.show()
-    exit()
+    
+    # list(get_chunks2(M, 9, 5)) same result more faster
+    allmx = blockshaped(y,8,8)
+    final = unblockshaped(allmx,h,w)
+    # allmx = np.hsplit(allmx, (15, 23, 31, 39, 47, 55, 63, 71, 79, 87, 95, 103, 111, 119, 127, 135, 143, 151, 159, 167, 175, 183, 191, 199, 207, 215, 223, 231))
+    # for i in allmx:
+    #     i = np.vsplit(i, (15, 23, 31, 39, 47, 55, 63, 71, 79, 87, 95, 103, 111, 119, 127, 135, 143, 151, 159, 167, 175, 183, 191, 199, 207, 215, 223, 231))
+    pprint(np.stack(allmx).shape) 
+    #allmx = view_as_blocks(y, (8, 8))
+    rd = np.dstack(allmx).reshape(h,w)
+    # flatten_view = allmx.reshape(allmx.shape[0], allmx.shape[1], -1)
+    # flatten_view = allmx.reshape(h,w)
+   
     res = []
     maxx = 0
     #resmx = np.array(900,8,8)
@@ -178,10 +222,9 @@ def main():
             i = 0
         if i >255:
             i = 255
-    allmx = allmx.flatten()
-    allmx = allmx.reshape(w,h)
+    out = unblockshaped(allmx,h,w)
     print(allmx)
-    imm = Image.fromarray(allmx.astype('uint8'))
+    imm = Image.fromarray(out.astype('uint8'))
     imm.show()
     #print(res)
 if __name__ == '__main__':
